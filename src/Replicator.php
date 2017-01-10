@@ -68,6 +68,25 @@ class Replicator
         return $replication->start($printStatus, $getFinalReport);
     }
 
+
+    public function getDiff()
+    {
+      if ($this->source == null) {
+        throw new \UnexpectedValueException('Source is Null.');
+      }
+      if ($this->target == null) {
+        throw new \UnexpectedValueException('Target is Null.');
+      }
+      if ($this->task == null) {
+        throw new \UnexpectedValueException('Task is Null.');
+      }
+
+      $replication = new Replication($this->source, $this-> target, $this->task);
+
+      // Start and return the details of the Diff.
+      return $replication->getDiff();
+    }
+
     /**
      * @throws Exception
      */

@@ -94,6 +94,21 @@ class Replication {
         return $replicationLog;
     }
 
+    public function getDiff()
+    {
+      $this->startTime = new \DateTime();
+      // DB info (via GET /{db}) for source and target.
+      $this->verifyPeers();
+      $this->task->setRepId($this->generateReplicationId());
+      // Replication log (via GET /{db}/_local/{docid}) for source and target.
+      list($sourceLog, $targetLog) = $this->getReplicationLog();
+
+      $this->task->setSinceSeq($this->compareReplicationLogs($sourceLog, $targetLog));
+      // Main replication processing
+      $entities = $this->locateChangedDocuments();
+
+      return $entities;
+    }
 
     /**
      * @return array
@@ -464,6 +479,46 @@ class Replication {
             // errorResponse.
             return $finalResponse;
         }
+    }
+
+    public function locateChangedDocuments()
+    {
+      if (!$this->task->getContinuous()) {
+        $changes = $this->source->getChanges(
+          array(
+            'feed' => 'normal',
+            'style' => $this->task->getStyle(),
+            'since' => $this->task->getSinceSeq(),
+            'filter' => $this->task->getFilter(),
+            'parameters' => $this->task->getParameters(),
+            'doc_ids' => $this->task->getDocIds()
+            //'limit' => 10000 //taking large value for now, needs optimisation
+          )
+        );
+        $mapping = $this->getMapping($changes);
+        $revDiff = (count($mapping) > 0 ? $this->target->getRevisionDifference($mapping) : array());
+        $entities = $this->getChanges($revDiff);
+        return $entities;
+      }
+    }
+
+    /**
+     * @param array $revDiff
+     * @return array|void
+     * @throws HTTPException
+     */
+    public function getChanges($revDiff)
+    {
+      $entities = array();
+      foreach ($revDiff as $docId => $revMisses) {
+        $document = $this->source->findDocument($docId);
+
+        // TODO: Need to handle document deletion.
+        if ($document->status == 200) {
+          $entities[$docId] = $document->body;
+        }
+      }
+      return $entities;
     }
 
     /**
